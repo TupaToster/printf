@@ -3,6 +3,6 @@ extern "C" void _printf (const char* fmt, ...);
 
 int main () {
 
-    _printf ("%c", 'x');
+    _printf ("%c%c\n", 'X', 'Y');
     return 0;
 }

@@ -8,7 +8,9 @@ ASM_SRC = _printf.asm
 CC_SRC = main.cpp
 CC_LINK = -no-pie -m64
 
-all: main.o _printf.o
+all: printf
+
+printf:	_printf.o main.o
 	$(CC) $(CC_LINK) $^ -o printf -lc
 
 _printf.o:	$(ASM_SRC)

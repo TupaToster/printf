@@ -127,6 +127,7 @@ Calculator:
                 xor rbx, rbx
                 mov bl, byte [rdi]              ;jump to corec function
                 call [JmpTab + 8 * (ebx - 'b')]
+                inc rdi
                 jmp .loop
 
 .break:         ret
@@ -146,10 +147,12 @@ cTok:           add r11, args
                 push rsi
                 push rdx
                 mov rax, 1
-                mov rsi, [r11]           ; prints current char
+                mov rsi, r11           ; prints current char
+                push r11
                 mov rdi, 1
                 mov rdx, 1
                 syscall
+                pop r11
                 pop rdx
                 pop rsi
                 pop rdi
