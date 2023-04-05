@@ -15,52 +15,90 @@ times ('x' - 's' - 1)   dq      dflt
 .x      dq      xTok
         dq      dflt
 
-section .data
-args    times (5)       dq      0x00
-float_args      times (8) dq 0x00
+ArgJmpTab:
+dq      zero
+dq      one
+dq      two
+dq      three
+dq      four
+dq      five
 
+section .data
+buff    times (256) db 0x00
 
 section .text
         global _printf
 
 _printf:
-                push rdi
-                lea rdi, args
-                mov [rdi], rsi
-                mov [rdi + 8], rdx
-                mov [rdi + 16], rcx     ; puts args to an array for easier iteration
-                mov [rdi + 24], r8
-                mov [rdi + 32], r9
-                xor r11, r11            ; iterator for args
-                pop rdi
+; Disclamer: only top of 8 floats can be outputted per function call because otherwise it becomes pretty un neat to code
 
-                push rdi
-                push rsi
-                push rdx        ; reg saver
-                push rcx
-                push r8
-                push r9
-                push rax
 
-                xor rbx, rbx
-                xor rcx, rcx
-                call Calculator
 
-                pop rax
-                pop r9
-                pop r8
-                pop rcx
-                pop rdx         ;reg unsaver
-                pop rsi
-                pop rdi
+                pop r10
+
+                call GetArgCnt
+
+                cmp r11, 5
+                jae five
+                shl r11, 3
+                jmp [ArgJmpTab + r11]
+
+five:           push r9
+four:           push r8
+three:          push rcx
+two:            push rdx
+one:            push rsi
+
+zero:           call Calculator
+
+
+                push r10
 
                 ret
 
+; -----------------------------
+; Gets amount of args required by fmt string
+; -----------------------------
+; Needs:          rdi - fmt string ptr
 
+; Exit:           r11 - total non-float arg count (cause float arg cnt is stored in rax)
+
+; Expects:        none
+
+; Destroys:       none
+; =============================
+GetArgCnt:      push rcx
+                push rax
+
+                mov rax, rdi
+
+                call StrLen
+
+                mov rax, rdi
+
+                xor r11, r11
+
+.loop:          cmp byte [rax], '%'
+                jne .next
+
+                inc rax
+                dec rcx
+                cmp byte [rax], '%'
+                je .next
+                cmp byte [rax], 'f'
+                je .next
+
+                inc r11
+.next:          inc rax
+                loop .loop
+
+                pop rax
+                pop rcx
+                ret
 ; ----------------------------
 ; Calculates len of null-term string and puts it to rax
 ; ----------------------------
-; Needs:          rbx - string offset
+; Needs:          rax - string offset
 
 ; Exit:           rcx - strlen
 
@@ -69,7 +107,7 @@ _printf:
 ; Destroys:       rax, rcx
 ; ============================
 StrLen:         xor rcx, rcx
-.next:          cmp BYTE [rbx], 0x00
+.next:          cmp BYTE [rax], 0x00
                 je .break
                 inc rcx
                 inc rax
@@ -86,52 +124,62 @@ StrLen:         xor rcx, rcx
 
 ; Expects:        none
 
-; Destroys:       rbx
+; Destroys:       rdx, rax, rsi, rdi, rbx
 ; ==============================
 Calculator:
 
-.loop:          cmp byte [rdi], '%'
-                je .tokens
+                pop r11                 ; saves ret address
 
-                push rax
-                push rdi
-                push rsi
-                push rdx
-                mov rax, 1
-                mov rsi, rdi            ; prints current char
-                mov rdi, 1
-                mov rdx, 1
-                syscall
-                pop rdx
-                pop rsi
-                pop rdi
-                pop rax
+                xor rdx, rdx
 
-                inc rdi              ; moves to next
+.loop:          cmp byte [rdi], '%'     ; reads all the way up to the first '%'
+                je .break1
 
                 cmp byte [rdi], 0x00
-                jne .loop               ; loop while not \0
-                jmp .break          ; skips token check for true
+                je .break2              ; checks for string end
 
-.tokens:        inc rdi        ; shift to format spec
-
-                cmp byte [rdi], 0x00e
-                je dflt
-                cmp byte [rdi], '%'
-                je pTok                ; check for special conditions
-                cmp byte [rdi], 'a'
-                jb dflt
-                cmp byte [rdi], 'x'
-                ja dflt
-
-                xor rbx, rbx
-                mov bl, byte [rdi]              ;jump to corec function
-                call [JmpTab + 8 * (ebx - 'b')]
                 inc rdi
+                inc rdx
                 jmp .loop
 
-.break:         ret
+.break1:        push rdi
+                push r11
+                sub rdi, rdx
+                mov rsi, rdi
+                mov rax, 1              ; prints everything up to '%'
+                mov rdi, 1
+                syscall
+                pop r11
+                pop rdi
 
+                xor rdx, rdx            ; zeroing counter
+
+                inc rdi         ;moves to format spec
+
+                cmp byte [rdi], 0x00
+                je dflt
+                cmp byte [rdi], '%'
+                je pTok
+                cmp byte [rdi], 'b'     ;checks extreme cases
+                jb dflt
+                cmp byte[rdi], 'x'
+                ja dflt
+
+                mov dl, byte [rdi]              ;jumps to correc format spec processor
+                call [JmpTab + 8 * (rdx - 'b')]
+                inc rdi                 ; moves to next symbol
+                xor rdx, rdx            ; zeroing counter again
+                loop .loop
+
+.break2:
+                push r11
+                sub rdi, rdx
+                mov rsi, rdi
+                mov rax, 1              ; prints everything up to 0x00
+                mov rdi, 1
+                syscall
+
+                ret
 
 ; For all _Tok functions call syntax is the same:
 
@@ -139,30 +187,41 @@ Calculator:
 
 ; Exit:   desired output to screen
 
-; ----------------- char token ----------------
-cTok:           add r11, args
+; Destroys : rax, rsi, rdi, rdx - 100%, others may vary
 
+; ----------------- char token ----------------
+cTok:
+                pop r9         ; saves return
+
+
+                pop rax
+                mov buff[0], al
+
+                push rdi
+                push r11
+                mov rax, 1
+                lea rsi, buff
+                mov rdi, 1              ; prints single char from buff
+                mov rdx, 1
+                syscall
+                pop r11
+                pop rdi
+
+                push r9
+
+                ret
+
+bTok:
                 push rax
                 push rdi
                 push rsi
                 push rdx
-                mov rax, 1
-                mov rsi, r11           ; prints current char
-                push r11
-                mov rdi, 1
-                mov rdx, 1
-                syscall
-                pop r11
-                pop rdx
-                pop rsi
-                pop rdi
-                pop rax
 
-                sub r11, args - 8
+                xor rcx, rcx
+                mov rcx, 32d
+
 
                 ret
-
-bTok:           ret
 
 dTok:           ret
 
