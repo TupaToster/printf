@@ -3,6 +3,6 @@ extern "C" void _printf (const char* fmt, ...);
 
 int main () {
 
-    _printf ("%b\nit work\n", 0x88);
+    _printf ("%b\nit work\n%s\n\n", 0x88, "it work 2");
     return 0;
 }

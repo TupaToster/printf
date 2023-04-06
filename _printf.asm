@@ -34,8 +34,6 @@ section .text
 _printf:
 ; Disclamer: only top of 8 floats can be outputted per function call because otherwise it becomes pretty un neat to code
 
-
-
                 pop r10         ; saves return point
 
                 call GetArgCnt  ; gets non float arg cnt
@@ -47,7 +45,7 @@ _printf:
 
 five:           push r9
 four:           push r8
-three:          push rcx
+three:          push rcx                ; pusher for custom amount of args for easier life
 two:            push rdx
 one:            push rsi
 
@@ -69,31 +67,31 @@ zero:           call Calculator         ; function to print all
 ; Destroys:       none
 ; =============================
 GetArgCnt:      push rcx
-                push rax
+                push rax                ; saves rax rcx
 
-                mov rax, rdi
+                mov rax, rdi            ; moves rdi to rax for strlen
 
                 call StrLen
 
-                mov rax, rdi
+                mov rax, rdi            ; again
 
-                xor r11, r11
+                xor r11, r11            ; zeroes r11 for count of args
 
-.loop:          cmp byte [rax], '%'
+.loop:          cmp byte [rax], '%'     ; checks for arg token
                 jne .next
 
-                inc rax
-                dec rcx
-                cmp byte [rax], '%'
+                inc rax         ; moves to format spec
+                dec rcx         ; decreases iterator for loop
+                cmp byte [rax], '%'     ; checks for %%
                 je .next
-                cmp byte [rax], 'f'
+                cmp byte [rax], 'f'     ; and %f cause they are different and i hate %f
                 je .next
 
-                inc r11
-.next:          inc rax
+                inc r11         ; adds arg counter
+.next:          inc rax         ; moves to next char
                 loop .loop
 
-                pop rax
+                pop rax         ; restores rax rcx
                 pop rcx
                 ret
 ; ----------------------------
@@ -109,7 +107,7 @@ GetArgCnt:      push rcx
 ; ============================
 StrLen:         xor rcx, rcx
 .next:          cmp BYTE [rax], 0x00
-                je .break
+                je .break               ; lol its trivial
                 inc rcx
                 inc rax
                 jmp .next
@@ -140,7 +138,7 @@ Calculator:
                 je .break2              ; checks for string end
 
                 inc rdi
-                inc rdx
+                inc rdx         ; shifts to next char and incs char count for print to %
                 jmp .loop
 
 .break1:        push rdi
@@ -224,7 +222,7 @@ dec2bin:        push rbx
 
 ; Exit:   desired output to screen
 
-; Destroys : rax, rsi, rdx - 100%, others may vary
+; Destroys : rax, rsi, rdx, r9 - 100%, others may vary
 
 ; ----------------- char token ----------------
 cTok:
@@ -248,6 +246,7 @@ cTok:
                 pop rdi
 
                 ret
+;---------------------------------------------------------------------
 
 bTok:           pop r9          ; saves return
 
@@ -277,41 +276,122 @@ bTok:           pop r9          ; saves return
                 pop rdi         ; restures rdi, r11
 
                 ret
-
+;---------------------------------------------------------------------
 dTok:           pop r9
-                pop rax
+
+                pop rax         ; gets arg
+
                 push r9
+
+
+                lea rsi, buff
+                mov rcx, rsi    ; sets rcx = rsi = lea buff
+                xor rdx, rdx
+
+                push rbx
+                cqo
+
+.loop:          mov rbx, 0x0a
+                div rbx
+                add dl, '0'
+                mov byte [rcx], dl      ; transfers number to rebersed order string
+                xor dl, dl
+                inc rcx
+                cmp rax, 0
+                jne .loop
+
+                pop rbx
+
+                sub rcx, rsi    ; rcx = Strlen - 1
+                dec rcx
+                xor r9, r9
+
+                cmp rcx, 0
+                ja .swapper             ; checks for single digit (its easier to add checker than rewrite swapper)
+                jmp .skipSwap
+
+
+.swapper:       mov al, byte [rsi + r9]
+                sub rsi, r9
+                xchg al, byte [rsi + rcx]               ; reverses buff for rcx
+                add rsi, r9
+                mov byte [rsi + r9], al
+                inc r9
+                sub rcx, r9
+                cmp r9, rcx
+                jae .break
+                add rcx, r9
+                jmp .swapper
+
+.break:         add rcx, r9     ; restores rcx from swapper
+.skipSwap:      inc rcx         ; restores rcx to Strlen
+
+                push rdi
+                push r11
+
+                mov rax, 1
+                mov rdi, 1      ; prints buff
+                mov rdx, rcx
+                syscall
+
+                pop r11
+                pop rdi
+
                 ret
+;---------------------------------------------------------------------
 
 fTok:           pop r9
                 pop rax
                 push r9
                 ret
+;---------------------------------------------------------------------
 
 sTok:           pop r9
-                pop rax
+                pop rax         ; gets arg
                 push r9
-                ret
+
+                push rax
+                call StrLen     ; gets arg len
+                pop rax
+
+                push r11
+                push rdi
+
+                mov rsi, rax            ; prints arg
+                mov rax, 1
+                mov rdi, 1
+                mov rdx, rcx
+                syscall
+
+                pop rdi
+                pop r11
+
+                ret             ; simple as grob
+;---------------------------------------------------------------------
 
 xTok:           pop r9
                 pop rax
                 push r9
                 ret
+;---------------------------------------------------------------------
 
 oTok:           pop r9
                 pop rax
                 push r9
                 ret
+;---------------------------------------------------------------------
 
 pTok:           pop r9
                 pop rax
                 push r9
                 ret
+;---------------------------------------------------------------------
 
 dflt:           pop r9
                 pop rax
                 push r9
                 ret
+;---------------------------------------------------------------------
 
 
 
