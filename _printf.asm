@@ -1,13 +1,15 @@
 ; (c) Ded, 2012
 section .rodata
 
+dec2binMask      equ     0x0000000080000000     ; mask to separate upper bit of e_x register
+
 JmpTab:
 .b      dq      bTok
 .c      dq      cTok
 .d      dq      dTok
         dq      dflt
 .f      dq      fTok
-times ('o' - 'f' - 1)   dq      dflt
+times ('o' - 'f' - 1)   dq      dflt            ; table for format jumps
 .o      dq      oTok
 times ('s' - 'o' - 1)   dq      dflt
 .s      dq      sTok
@@ -18,13 +20,13 @@ times ('x' - 's' - 1)   dq      dflt
 ArgJmpTab:
 dq      zero
 dq      one
-dq      two
+dq      two             ; selector for amount of pushed args
 dq      three
 dq      four
 dq      five
 
 section .data
-buff    times (256) db 0x00
+buff    times (256) db 0x00     ; print buffer for %_
 
 section .text
         global _printf
@@ -34,12 +36,12 @@ _printf:
 
 
 
-                pop r10
+                pop r10         ; saves return point
 
-                call GetArgCnt
+                call GetArgCnt  ; gets non float arg cnt
 
                 cmp r11, 5
-                jae five
+                jae five                ; pushes correct amount of args
                 shl r11, 3
                 jmp [ArgJmpTab + r11]
 
@@ -49,10 +51,9 @@ three:          push rcx
 two:            push rdx
 one:            push rsi
 
-zero:           call Calculator
+zero:           call Calculator         ; function to print all
 
-
-                push r10
+                push r10                ; restores return point
 
                 ret
 
@@ -181,61 +182,136 @@ Calculator:
 
                 ret
 
+; --------------
+; Converts number to binary printf ready stuff in buffer
+; --------------
+; Needs:          rax - number to convert
+; Exit:           rax in binary > buff
+; Expects:        none
+; Destroys:       rax
+; ==============
+dec2bin:        push rbx
+                push rdx                ; saves rbx, rdx
+                lea rdx, buff
+
+                push rcx                ; saving rcx and setting it to count 0x20 bits
+                mov rcx, 0x20
+
+.loop:          mov ebx, eax
+                and ebx, dec2binMask    ; copies eax to ebx and separates upper bit in here
+
+                cmp ebx, 0      ; writes '0' if ebx == 0x00
+                je .write0
+
+                mov byte [rdx], '1'     ; writes one otherwise
+                jmp .noWrite0
+.write0:        mov byte [rdx], '0'
+.noWrite0:      inc rdx
+
+                shl rax, 1              ; shifts one left
+
+                loop .loop
+
+                pop rcx
+                pop rdx         ; restoring wasted regs
+                pop rbx
+
+                ret
+
 ; For all _Tok functions call syntax is the same:
 
 ; Needs: none
 
 ; Exit:   desired output to screen
 
-; Destroys : rax, rsi, rdi, rdx - 100%, others may vary
+; Destroys : rax, rsi, rdx - 100%, others may vary
 
 ; ----------------- char token ----------------
 cTok:
                 pop r9         ; saves return
 
+                pop rax         ; retrieve arg
 
-                pop rax
-                mov buff[0], al
+                push r9         ; restore return point
+                mov buff[0], al ; moves char to buff
 
-                push rdi
+                push rdi        ; saves regs cause they get wasted
                 push r11
+
                 mov rax, 1
                 lea rsi, buff
                 mov rdi, 1              ; prints single char from buff
                 mov rdx, 1
                 syscall
-                pop r11
+
+                pop r11         ; restores stuf
                 pop rdi
 
-                push r9
-
                 ret
 
-bTok:
-                push rax
+bTok:           pop r9          ; saves return
+
+                pop rax         ; gets next arg
+
+                push r9         ; restores return
+
+                call dec2bin    ; converts eax to binary in buff
+
                 push rdi
-                push rsi
-                push rdx
+                push r11        ; saves rdi, r11 cause they are used
 
-                xor rcx, rcx
-                mov rcx, 32d
+                mov rax, 1
+                lea rsi, buff
+                mov rdi, 1      ; sets print args
+                mov rdx, 32
 
+.skipZeros:     cmp byte [rsi], '0'
+                jne .break
+                inc rsi         ; skips first zeros
+                dec rdx
+                jmp .skipZeros
+
+.break:         syscall         ; prints
+
+                pop r11
+                pop rdi         ; restures rdi, r11
 
                 ret
 
-dTok:           ret
+dTok:           pop r9
+                pop rax
+                push r9
+                ret
 
-fTok:           ret
+fTok:           pop r9
+                pop rax
+                push r9
+                ret
 
-sTok:           ret
+sTok:           pop r9
+                pop rax
+                push r9
+                ret
 
-xTok:           ret
+xTok:           pop r9
+                pop rax
+                push r9
+                ret
 
-oTok:           ret
+oTok:           pop r9
+                pop rax
+                push r9
+                ret
 
-pTok:           ret
+pTok:           pop r9
+                pop rax
+                push r9
+                ret
 
-dflt:           ret
+dflt:           pop r9
+                pop rax
+                push r9
+                ret
 
 
 
