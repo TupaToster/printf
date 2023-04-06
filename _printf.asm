@@ -1,7 +1,8 @@
 ; (c) Ded, 2012
 section .rodata
 
-dec2binMask      equ     0x0000000080000000     ; mask to separate upper bit of e_x register
+dec2binMask      equ    0x0000000080000000     ; mask to separate upper bit of e_x register
+ErrormsgLen      equ    12
 
 JmpTab:
 .b      dq      bTok
@@ -27,6 +28,7 @@ dq      five
 
 section .data
 buff    times (256) db 0x00     ; print buffer for %_
+Errormsg        db '<unkwn_spec>', 0x00
 
 section .text
         global _printf
@@ -67,7 +69,12 @@ zero:           call Calculator         ; function to print all
 ; Destroys:       none
 ; =============================
 GetArgCnt:      push rcx
-                push rax                ; saves rax rcx
+                push rax                ; saves rax rcx rdx rbx
+                push rdx
+                push rbx
+
+                mov rbx, dflt
+                xor rdx, rdx
 
                 mov rax, rdi            ; moves rdi to rax for strlen
 
@@ -86,12 +93,26 @@ GetArgCnt:      push rcx
                 je .next
                 cmp byte [rax], 'f'     ; and %f cause they are different and i hate %f
                 je .next
+                cmp byte [rax], 'b'     ;checks extreme cases
+                jb .next
+                cmp byte [rax], 'x'
+                ja .next
+
+                xor rdx, rdx
+                mov dl, byte [rax]
+                sub dl, 'b'
+                shl rdx, 3
+                mov rdx, [JmpTab + rdx]
+                cmp rbx, rdx
+                je .next
 
                 inc r11         ; adds arg counter
 .next:          inc rax         ; moves to next char
                 loop .loop
 
-                pop rax         ; restores rax rcx
+                pop rbx
+                pop rdx
+                pop rax         ; restores rax rcx rdx rbx
                 pop rcx
                 ret
 ; ----------------------------
@@ -153,20 +174,28 @@ Calculator:
 
                 xor rdx, rdx            ; zeroing counter
 
-                inc rdi         ;moves to format spec
+                inc rdi                 ;moves to format spec
 
                 cmp byte [rdi], 0x00
-                je dflt
-                cmp byte [rdi], '%'
-                je pTok
-                cmp byte [rdi], 'b'     ;checks extreme cases
-                jb dflt
-                cmp byte[rdi], 'x'
-                ja dflt
+                jne .noZero
+                call dflt
+                jmp .xcpnRet
+.noZero:        cmp byte [rdi], '%'
+                jne .noP
+                call pTok
+                jmp .xcpnRet
+.noP:           cmp byte [rdi], 'b'     ;checks extreme cases
+                jae .noLess
+                call dflt
+                jmp .xcpnRet
+.noLess:        cmp byte [rdi], 'x'
+                jbe .noMore
+                call dflt
+                jmp .xcpnRet
 
-                mov dl, byte [rdi]              ;jumps to correc format spec processor
+.noMore:        mov dl, byte [rdi]              ;jumps to correc format spec processor
                 call [JmpTab + 8 * (rdx - 'b')]
-                inc rdi                 ; moves to next symbol
+.xcpnRet:       inc rdi                 ; moves to next symbol
                 xor rdx, rdx            ; zeroing counter again
                 loop .loop
 
@@ -370,26 +399,175 @@ sTok:           pop r9
 ;---------------------------------------------------------------------
 
 xTok:           pop r9
-                pop rax
+
+                pop rax         ; gets arg
+
                 push r9
+
+                lea rsi, buff
+                mov rcx, rsi    ; sets rcx = rsi = lea buff
+                xor rdx, rdx
+
+                push rbx
+                cqo
+
+.loop:          mov rbx, 0x10
+                div rbx
+                cmp dl, 0x0a
+                jae .letter
+                add dl, '0'
+                jmp .noletter
+.letter:        add dl, 'A' - 0x0a
+.noletter:      mov byte [rcx], dl      ; transfers number to rebersed order string
+                xor dl, dl
+                inc rcx
+                cmp rax, 0
+                jne .loop
+
+                pop rbx
+
+                sub rcx, rsi    ; rcx = Strlen - 1
+                dec rcx
+                xor r9, r9
+
+                cmp rcx, 0
+                ja .swapper             ; checks for single digit (its easier to add checker than rewrite swapper)
+                jmp .skipSwap
+
+
+.swapper:       mov al, byte [rsi + r9]
+                sub rsi, r9
+                xchg al, byte [rsi + rcx]               ; reverses buff for rcx
+                add rsi, r9
+                mov byte [rsi + r9], al
+                inc r9
+                sub rcx, r9
+                cmp r9, rcx
+                jae .break
+                add rcx, r9
+                jmp .swapper
+
+.break:         add rcx, r9     ; restores rcx from swapper
+.skipSwap:      inc rcx         ; restores rcx to Strlen
+
+                push rdi
+                push r11
+
+                mov rax, 1
+                mov rdi, 1      ; prints buff
+                mov rdx, rcx
+                syscall
+
+                pop r11
+                pop rdi
+
                 ret
+
 ;---------------------------------------------------------------------
 
 oTok:           pop r9
-                pop rax
+
+                pop rax         ; gets arg
+
                 push r9
+
+
+                lea rsi, buff
+                mov rcx, rsi    ; sets rcx = rsi = lea buff
+                xor rdx, rdx
+
+                push rbx
+                cqo
+
+.loop:          mov rbx, 0x08
+                div rbx
+                add dl, '0'
+                mov byte [rcx], dl      ; transfers number to rebersed order string
+                xor dl, dl
+                inc rcx
+                cmp rax, 0
+                jne .loop
+
+                pop rbx
+
+                sub rcx, rsi    ; rcx = Strlen - 1
+                dec rcx
+                xor r9, r9
+
+                cmp rcx, 0
+                ja .swapper             ; checks for single digit (its easier to add checker than rewrite swapper)
+                jmp .skipSwap
+
+
+.swapper:       mov al, byte [rsi + r9]
+                sub rsi, r9
+                xchg al, byte [rsi + rcx]               ; reverses buff for rcx
+                add rsi, r9
+                mov byte [rsi + r9], al
+                inc r9
+                sub rcx, r9
+                cmp r9, rcx
+                jae .break
+                add rcx, r9
+                jmp .swapper
+
+.break:         add rcx, r9     ; restores rcx from swapper
+.skipSwap:      inc rcx         ; restores rcx to Strlen
+
+                push rdi
+                push r11
+
+                mov rax, 1
+                mov rdi, 1      ; prints buff
+                mov rdx, rcx
+                syscall
+
+                pop r11
+                pop rdi
+
+                ret
+
+;---------------------------------------------------------------------
+
+pTok:           push rdi
+                push r11
+                push rax        ; saves lotta regs
+                push rsi
+                push rdx
+
+                mov rax, 1
+                mov rsi, rdi    ; prints %
+                mov rdi, 1
+                mov rdx, 1
+                syscall
+
+                pop rdx
+                pop rsi
+                pop rax         ; restores da regs
+                pop r11
+                pop rdi
+
                 ret
 ;---------------------------------------------------------------------
 
-pTok:           pop r9
-                pop rax
-                push r9
-                ret
-;---------------------------------------------------------------------
+dflt:           push rdi
+                push r11
+                push rax        ; saves lotta regs
+                push rsi
+                push rdx
 
-dflt:           pop r9
+                mov rax, 1
+                mov rsi, Errormsg
+                mov rdi, 1
+                mov rdx, ErrormsgLen    ; prints wrong format message instead of %_
+                syscall
+
+                pop rdx
+                pop rsi
                 pop rax
-                push r9
+                pop r11         ; restores da regs
+                pop rdi
+
                 ret
 ;---------------------------------------------------------------------
 
