@@ -256,16 +256,17 @@ bin2binStr:     push rbx
 ; Expects:        none
 ; Destroys:       rax
 ; ------------
-bin2hexStr:     push es
-                push di         ; saves regs for str funcs
+bin2hexStr:     push rbx        ; saves rbx for use as temp reg
+                push rdi
 
-                mov es, cs
+                mov rbx, cs
+                mov es, rbx
+
                 lea di, buff    ; sets es:[di] to buff
 
                 push rcx
                 mov rcx, 0x8   ; saves rcx ad sets it to count 0x8 hex digits
 
-                push rbx        ; saves rbx for use as temp reg
                 mov rbx, rax
 
 .loop:          mov eax, ebx
@@ -288,10 +289,9 @@ bin2hexStr:     push es
 
                 loop .loop
 
-                pop rbx
                 pop rcx         ; restores regs
-                pop di
-                pop es
+                pop rdi
+                pop rbx
 
                 ret
 
@@ -303,21 +303,22 @@ bin2hexStr:     push es
 ; Expects:        none
 ; Destroys:       rax
 ; ===============
-bin2octStr:     push es
-                push di         ; saves regs for str funcs
+bin2octStr:     push rbx
+                push rdi
 
-                mov es, cs
+                mov rbx, cs
+                mov es, rbx
+
                 lea di, buff    ; sets es:[di] to buff
 
                 push rcx
                 mov rcx, 0xa   ; saves rcx and sets it to count 0xa oct digits (remaining 2 bits will be mapped separately)
 
-                push rbx        ; saves rbx for use as temp reg
                 xor rbx, rbx
                 mov ebx, eax
 
-                and ebx, 0x00000000C0000000     ; custom mask for upper 2 bits
-                shr ebx, 30                     ; switch them to al
+                and eax, 0x00000000C0000000     ; custom mask for upper 2 bits
+                shr eax, 30                     ; switch them to al
                 add al, '0'
                 stosb
 
@@ -334,16 +335,11 @@ bin2octStr:     push es
 
                 loop .loop
 
-                pop rbx
                 pop rcx         ; restores regs
-                pop di
-                pop es
+                pop rdi
+                pop rbx
 
                 ret
-
-
-
-
 
 ; For all _Tok functions call syntax is the same:
 
@@ -501,62 +497,26 @@ xTok:           pop r9
 
                 push r9
 
-                lea rsi, buff
-                mov rcx, rsi    ; sets rcx = rsi = lea buff
-                xor rdx, rdx
+                call bin2hexStr ; converts rax to hex in buff
 
-                push rbx
-                cqo
-
-.loop:          mov rbx, 0x10
-                div rbx
-                cmp dl, 0x0a
-                jae .letter
-                add dl, '0'
-                jmp .noletter
-.letter:        add dl, 'A' - 0x0a
-.noletter:      mov byte [rcx], dl      ; transfers number to rebersed order string
-                xor dl, dl
-                inc rcx
-                cmp rax, 0
-                jne .loop
-
-                pop rbx
-
-                sub rcx, rsi    ; rcx = Strlen - 1
-                dec rcx
-                xor r9, r9
-
-                cmp rcx, 0
-                ja .swapper             ; checks for single digit (its easier to add checker than rewrite swapper)
-                jmp .skipSwap
-
-
-.swapper:       mov al, byte [rsi + r9]
-                sub rsi, r9
-                xchg al, byte [rsi + rcx]               ; reverses buff for rcx
-                add rsi, r9
-                mov byte [rsi + r9], al
-                inc r9
-                sub rcx, r9
-                cmp r9, rcx
-                jae .break
-                add rcx, r9
-                jmp .swapper
-
-.break:         add rcx, r9     ; restores rcx from swapper
-.skipSwap:      inc rcx         ; restores rcx to Strlen
-
-                push rdi
+                push rdi        ; saves rdi, r11
                 push r11
 
                 mov rax, 1
-                mov rdi, 1      ; prints buff
-                mov rdx, rcx
-                syscall
+                lea rsi, buff   ; sets args
+                mov rdi, 1
+                mov rdx, 0x8
+
+.skipZeros:     cmp byte [rsi], '0'
+                jne .break
+                inc rsi         ; skips zeros
+                dec rdx
+                jmp .skipZeros
+
+.break:         syscall         ; le printer
 
                 pop r11
-                pop rdi
+                pop rdi         ; restores stuf
 
                 ret
 
@@ -568,58 +528,25 @@ oTok:           pop r9
 
                 push r9
 
+                call bin2octStr ; converts rax to oct in buff
 
-                lea rsi, buff
-                mov rcx, rsi    ; sets rcx = rsi = lea buff
-                xor rdx, rdx
-
-                push rbx
-                cqo
-
-.loop:          mov rbx, 0x08
-                div rbx
-                add dl, '0'
-                mov byte [rcx], dl      ; transfers number to rebersed order string
-                xor dl, dl
-                inc rcx
-                cmp rax, 0
-                jne .loop
-
-                pop rbx
-
-                sub rcx, rsi    ; rcx = Strlen - 1
-                dec rcx
-                xor r9, r9
-
-                cmp rcx, 0
-                ja .swapper             ; checks for single digit (its easier to add checker than rewrite swapper)
-                jmp .skipSwap
-
-
-.swapper:       mov al, byte [rsi + r9]
-                sub rsi, r9
-                xchg al, byte [rsi + rcx]               ; reverses buff for rcx
-                add rsi, r9
-                mov byte [rsi + r9], al
-                inc r9
-                sub rcx, r9
-                cmp r9, rcx
-                jae .break
-                add rcx, r9
-                jmp .swapper
-
-.break:         add rcx, r9     ; restores rcx from swapper
-.skipSwap:      inc rcx         ; restores rcx to Strlen
-
-                push rdi
+                push rdi        ; saves regs cause they used
                 push r11
 
                 mov rax, 1
-                mov rdi, 1      ; prints buff
-                mov rdx, rcx
-                syscall
+                lea rsi, buff
+                mov rdi, 1      ; sets syscall args
+                mov rdx, 0xb
 
-                pop r11
+.skipZeros:     cmp byte [rsi], '0'
+                jne .break
+                inc rsi
+                dec rdx         ; skips Zeros
+                jmp .skipZeros
+
+.break:         syscall ; le print
+
+                pop r11         ; restores stuf
                 pop rdi
 
                 ret
