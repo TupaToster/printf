@@ -220,29 +220,33 @@ Calculator:
 ; Destroys:       rax
 ; ==============
 bin2binStr:     push rbx
-                push rdx                ; saves rbx, rdx
-                lea rdx, buff
+                push rdi        ; saves regs
+
+                mov rbx, cs     ; moves cs -> es
+                mov es, rbx
+
+                lea rdi, buff   ; rdi = offset buff
 
                 push rcx                ; saving rcx and setting it to count 0x20 bits
                 mov rcx, 0x20
 
-.loop:          mov ebx, eax
-                and ebx, bin2binStrMask    ; copies eax to ebx and separates upper bit in here
+                xor rbx, rbx
+                mov ebx, eax
 
-                cmp ebx, 0      ; writes '0' if ebx == 0x00
-                je .write0
+.loop:          mov eax, ebx
+                and eax, bin2binStrMask    ; copies eax to ebx and separates upper bit in here
 
-                mov byte [rdx], '1'     ; writes one otherwise
-                jmp .noWrite0
-.write0:        mov byte [rdx], '0'
-.noWrite0:      inc rdx
+                shr eax, 31
+                add al, '0'     ; shifts to al
 
-                shl rax, 1              ; shifts one left
+                stosb   ; le print
+
+                shl rbx, 1              ; shifts one left
 
                 loop .loop
 
                 pop rcx
-                pop rdx         ; restoring wasted regs
+                pop rdi         ; restores stuf
                 pop rbx
 
                 ret
