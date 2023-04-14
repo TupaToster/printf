@@ -1,8 +1,10 @@
 ; (c) Ded, 2012
 section .rodata
 
-dec2binMask      equ    0x0000000080000000     ; mask to separate upper bit of e_x register
-ErrormsgLen      equ    12
+bin2binStrMask  equ     0x0000000080000000     ; mask to separate upper bit of e_x register
+bin2hexStrMask  equ     0x00000000F0000000      ; mask to separate upper half byte of e_x reg
+bin2octStrMask  equ     0x0000000038000000      ; mask to separate upper 3 bits of e_x reg for octal
+ErrormsgLen     equ     12
 
 JmpTab:
 .b      dq      bTok
@@ -217,7 +219,7 @@ Calculator:
 ; Expects:        none
 ; Destroys:       rax
 ; ==============
-dec2bin:        push rbx
+bin2binStr:     push rbx
                 push rdx                ; saves rbx, rdx
                 lea rdx, buff
 
@@ -225,7 +227,7 @@ dec2bin:        push rbx
                 mov rcx, 0x20
 
 .loop:          mov ebx, eax
-                and ebx, dec2binMask    ; copies eax to ebx and separates upper bit in here
+                and ebx, bin2binStrMask    ; copies eax to ebx and separates upper bit in here
 
                 cmp ebx, 0      ; writes '0' if ebx == 0x00
                 je .write0
@@ -244,6 +246,104 @@ dec2bin:        push rbx
                 pop rbx
 
                 ret
+
+
+; ------------
+; Converts to hex from bin
+; ------------
+; Needs:          rax - number to convert
+; Exit:           eax in hex > buff
+; Expects:        none
+; Destroys:       rax
+; ------------
+bin2hexStr:     push es
+                push di         ; saves regs for str funcs
+
+                mov es, cs
+                lea di, buff    ; sets es:[di] to buff
+
+                push rcx
+                mov rcx, 0x8   ; saves rcx ad sets it to count 0x8 hex digits
+
+                push rbx        ; saves rbx for use as temp reg
+                mov rbx, rax
+
+.loop:          mov eax, ebx
+                and eax, bin2hexStrMask
+
+                shr eax, 4 * 7  ; shifts half byte to al
+
+                cmp al, 0xa
+                jae .letter     ; checks if letter to be written
+
+                add al, '0'
+                stosb           ; converts al to char and writes it to buff
+
+                jmp .endif
+
+.letter:        add al, 'A' - 0xa
+                stosb           ; converts al to letter char and stores it
+
+.endif:         shl rbx, 4      ; shifts to next 4 bits
+
+                loop .loop
+
+                pop rbx
+                pop rcx         ; restores regs
+                pop di
+                pop es
+
+                ret
+
+; ---------------
+; Converts to oct str from bin
+; ---------------
+; Needs:          eax - number to convert
+; Exit:           eax in oct > buff
+; Expects:        none
+; Destroys:       rax
+; ===============
+bin2octStr:     push es
+                push di         ; saves regs for str funcs
+
+                mov es, cs
+                lea di, buff    ; sets es:[di] to buff
+
+                push rcx
+                mov rcx, 0xa   ; saves rcx and sets it to count 0xa oct digits (remaining 2 bits will be mapped separately)
+
+                push rbx        ; saves rbx for use as temp reg
+                xor rbx, rbx
+                mov ebx, eax
+
+                and ebx, 0x00000000C0000000     ; custom mask for upper 2 bits
+                shr ebx, 30                     ; switch them to al
+                add al, '0'
+                stosb
+
+                mov eax, ebx
+
+.loop:          mov eax, ebx
+                and eax, bin2octStrMask
+
+                shr eax, 27d  ; shifts half byte to al
+                add al, '0'
+                stosb           ; converts al to char and writes it to buff
+
+                shl rbx, 3      ; shifts to next 4 bits
+
+                loop .loop
+
+                pop rbx
+                pop rcx         ; restores regs
+                pop di
+                pop es
+
+                ret
+
+
+
+
 
 ; For all _Tok functions call syntax is the same:
 
@@ -283,7 +383,7 @@ bTok:           pop r9          ; saves return
 
                 push r9         ; restores return
 
-                call dec2bin    ; converts eax to binary in buff
+                call bin2binStr    ; converts eax to binary in buff
 
                 push rdi
                 push r11        ; saves rdi, r11 cause they are used
@@ -323,7 +423,7 @@ dTok:           pop r9
 .loop:          mov rbx, 0x0a
                 div rbx
                 add dl, '0'
-                mov byte [rcx], dl      ; transfers number to rebersed order string
+                mov byte [rcx], dl      ; transfers number to reversed order string
                 xor dl, dl
                 inc rcx
                 cmp rax, 0
@@ -369,10 +469,7 @@ dTok:           pop r9
                 ret
 ;---------------------------------------------------------------------
 
-fTok:           pop r9
-                pop rax
-                push r9
-                ret
+fTok:           ret
 ;---------------------------------------------------------------------
 
 sTok:           pop r9
